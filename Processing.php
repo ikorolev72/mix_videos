@@ -314,6 +314,16 @@ class Processing
         return ($out);
     }
 
+    public function getVideoInfo($input)
+    {
+        $ffprobe = $this->ffprobe;
+        $cmd = "$ffprobe -v quiet -hide_banner -show_streams -select_streams v:0 -of json $input";
+        //echo $cmd;
+        $json = shell_exec($cmd);
+        $out = json_decode($json, true);
+        return ($out);
+    }    
+
 
     public function normalizeVideo($input, $output, $width = 1280, $height = 720)
     {
@@ -321,9 +331,18 @@ class Processing
         $ffmpegLogLevel = $this->ffmpegLogLevel;
 
         $audioInfo=$this->getAudioInfo($input);
+     
         $audioFilter="[0:a] aresample=44100:first_pts=0 [a]";
         if( empty( $audioInfo['streams'][0]['duration'])) { //check if audio stream exists
-            $audioFilter="aevalsrc=0|0:s=44100 [a]";
+            $videoInfo=$this->getVideoInfo($input);    
+            if( !empty( $videoInfo['streams'][0]['duration'])) { //check if video stream exists
+                $duration=$videoInfo['streams'][0]['duration'];
+                $audioFilter="aevalsrc=0|0:s=44100:duration=$duration [a]";
+            } else {
+                $this->setLastError("Error: Cannot check duration of this media file");
+                return( false);
+            }                      
+
         }
         $cmd = join(" ", array(
             $ffmpeg,

@@ -11,11 +11,8 @@ $height=720;
 
 //input files
 $inputVideos= array( 
-  "demo/1.mp4",
+  "demo/demo-4899-1-0-5e0a81993b121.mp4",
   "demo/2.mp4",
-  "demo/3.mp4",
-  "demo/4.mp4",
-  "demo/5.mp4", 
 );
 
 
@@ -27,6 +24,10 @@ foreach( $inputVideos as $input ) {
   $tmpOutput=$processing->getTemporaryFile($tmpDir, "ts", $tmpFiles) ;
   $videos[]=$tmpOutput;
   $cmd=$processing->normalizeVideo($input, $tmpOutput, $width , $height )   ;  
+  if( !$cmd ) {
+    echo $processing->getLastError();
+    exit(1);
+  }
   echo $cmd.PHP_EOL;       
   $processing->doExec( $cmd );
 }
@@ -34,6 +35,10 @@ foreach( $inputVideos as $input ) {
 
 // concat video parts
 $cmd=$processing->concatVideos($videos, $outputVideo);
+if( !$cmd ) {
+  echo $processing->getLastError();
+  exit(1);
+}
 echo $cmd.PHP_EOL;
 $processing->doExec( $cmd );
 
