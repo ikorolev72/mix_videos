@@ -18,6 +18,9 @@ class Processing
         $this->error = '';
         $this->debug = $debug;
         $this->log = $log; // absolute path to log file
+        $this->tmpDir = realpath(__DIR__ . "/tmp");
+        $this->tmpFiles = array();   
+        @mkdir ( $this->tmpDir , 0755, true);
     }
 
     /**
@@ -40,17 +43,19 @@ class Processing
         return 1;
     }
 
-    public function getTemporaryFile($tmpDir, $extension, &$tmpFiles)
+    public function getTemporaryFile($extension)
     {
-        $tmp = $tmpDir . "/" . time() . rand(1000, 9999) . ".$extension";
-        $tmpFiles[] = $tmp;
+        $tmp = $this->tmpDir . "/" . time() . rand(100000, 999999) . ".$extension";
+        $this->tmpFiles[] = $tmp;
         return ($tmp);
     }
 
-    public function removeTemporaryFiles($tmpFiles)
+    public function removeTemporaryFiles()
     {
-        foreach ($tmpFiles as $tmpFile) {
-            @unlink($tmpFile);
+        if (!$this->debug) {
+            foreach ($this->tmpFiles as $tmpFile) {
+                @unlink($tmpFile);
+            }
         }
         return (true);
     }
@@ -214,6 +219,7 @@ class Processing
 
     public function prepareVideo($presenter, $sub_presenters, $output, $width = 1280, $height = 720)
     {
+        $commands=array();
         $ffmpeg = $this->ffmpeg;
         $ffmpegLogLevel = $this->ffmpegLogLevel;
         $countOfSubPresenter = 8;
@@ -227,19 +233,12 @@ class Processing
         $concatFilter = '';
         $audioFilter = array();
         $amergeFilter = array();
+        $fixedVideoInput=array();
 
         $item = $presenter;
 
-        /*
-        if (!file_exists($item['video_mp4'])) {
-        $this->setLastError("Error: Input file '".$item['video_mp4']."' do not exists") ;
-        return(false);
-        }
-         */
-
         $start = $item['offset'];
         $end = $item['length'];
-        $input[$key] = "-ss $start -t $end -i " . $item['video_mp4'];
         $scaleFilter[$key] = "[${key}:v] fps=25, setpts=PTS-STARTPTS, scale=w=$width:h=$height, setsar=1 [video${key}];";
         $overlayFilter[$key] = "[bg][video${key}] overlay=shortest=1 [bg${key}];";
 
@@ -249,9 +248,25 @@ class Processing
         $subScaleHeight = intval($subScaleWidth / $width * $height);
 
         $bgHeight = $subScaleHeight + $height;
-        $audioFilter[] = "[${key}:a] asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0:ocl=2 [a${key}] ;";
+        $audioFilter[] = "[${key}:a] asetpts=PTS-STARTPTS,aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2 [a${key}] ;";
 //        $audioFilter[]="[${key}:a] asetpts=PTS-STARTPTS, aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo, volume=1, dynaudnorm,apad [a${key}] ;";
         $amergeFilter[] = "[a${key}]";
+
+
+        $fixedVideoInput[$key]=$this->getTemporaryFile("mp4");
+        $input[$key] = "-i " . $fixedVideoInput[$key];
+
+        $cmd=  join(" ", array(
+        $ffmpeg,
+        "-y", // overwrite output file
+        "-loglevel $ffmpegLogLevel", //  ( default level is info )
+        "-ss $start -t $end -i " . $item['video_mp4'] , // input
+        "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+        "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", // 
+        "-c:a aac -ac 2 ", // 
+        $fixedVideoInput[$key]
+        ));
+        $commands[]=$cmd;
 
         foreach ($sub_presenters as $item) {
             /*
@@ -266,12 +281,26 @@ class Processing
             $overlayFilter[$key] = "[bg${n}][video${key}] overlay=x=" . ($n * $subX) . ":y=$subY:eof_action=pass [bg${key}];";
             $start = $item['offset'];
             $end = $item['length'];
-            $input[$key] = "-ss $start -t $end -i " . $item['video_mp4'];
-            $audioFilter[] = "[${key}:a] asetpts=PTS-STARTPTS,aresample=async=1000:first_pts=0:ocl=2 [a${key}] ;";
+            $audioFilter[] = "[${key}:a] asetpts=PTS-STARTPTS,aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2 [a${key}] ;";
             //$audioFilter[]="[${key}:a] asetpts=PTS-STARTPTS, aresample, dynaudnorm,apad [a${key}] ;";
             $amergeFilter[] = "[a${key}]";
+            $fixedVideoInput[$key]=$this->getTemporaryFile("mp4");            
+            $input[$key] = "-i " . $fixedVideoInput[$key];
+
+            $cmd=  join(" ", array(
+                $ffmpeg,
+                "-y", // overwrite output file
+                "-loglevel $ffmpegLogLevel", //  ( default level is info )
+                "-ss $start -t $end -i " . $item['video_mp4'] , // input
+                "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+                "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", // 
+                "-c:a aac -ac 2 ", // 
+                $fixedVideoInput[$key]
+                ));
+                $commands[]=$cmd;            
         }
 
+        
         $cmd = join(" ", array(
             $ffmpeg,
             "-y", // overwrite output file
@@ -293,8 +322,9 @@ class Processing
             "-c:a aac -ac 2 -bsf:a aac_adtstoasc ",
             "-mpegts_copyts 1 -f mpegts $output", // output in mp4 format
         ));
+        $commands[]=$cmd;     
 
-        return ($cmd);
+        return ($commands);
     }
 
     public function concatVideos($videos, $output)
