@@ -19,8 +19,8 @@ class Processing
         $this->debug = $debug;
         $this->log = $log; // absolute path to log file
         $this->tmpDir = realpath(__DIR__ . "/tmp");
-        $this->tmpFiles = array();   
-        @mkdir ( $this->tmpDir , 0755, true);
+        $this->tmpFiles = array();
+        @mkdir($this->tmpDir, 0755, true);
     }
 
     /**
@@ -219,7 +219,7 @@ class Processing
 
     public function prepareVideo($presenter, $sub_presenters, $output, $width = 1280, $height = 720)
     {
-        $commands=array();
+        $commands = array();
         $ffmpeg = $this->ffmpeg;
         $ffmpegLogLevel = $this->ffmpegLogLevel;
         $countOfSubPresenter = 8;
@@ -233,7 +233,7 @@ class Processing
         $concatFilter = '';
         $audioFilter = array();
         $amergeFilter = array();
-        $fixedVideoInput=array();
+        $fixedVideoInput = array();
 
         $item = $presenter;
 
@@ -252,21 +252,20 @@ class Processing
 //        $audioFilter[]="[${key}:a] asetpts=PTS-STARTPTS, aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo, volume=1, dynaudnorm,apad [a${key}] ;";
         $amergeFilter[] = "[a${key}]";
 
-
-        $fixedVideoInput[$key]=$this->getTemporaryFile("mp4");
+        $fixedVideoInput[$key] = $this->getTemporaryFile("mp4");
         $input[$key] = "-i " . $fixedVideoInput[$key];
 
-        $cmd=  join(" ", array(
-        $ffmpeg,
-        "-y", // overwrite output file
-        "-loglevel $ffmpegLogLevel", //  ( default level is info )
-        "-ss $start -t $end -i " . $item['video_mp4'] , // input
-        "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
-        "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", // 
-        "-c:a aac -ac 2 ", // 
-        $fixedVideoInput[$key]
+        $cmd = join(" ", array(
+            $ffmpeg,
+            "-y", // overwrite output file
+            "-loglevel $ffmpegLogLevel", //  ( default level is info )
+            "-ss $start -t $end -i " . $item['video_mp4'], // input
+             "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+            "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", //
+             "-c:a aac -ac 2 ", //
+            $fixedVideoInput[$key],
         ));
-        $commands[]=$cmd;
+        $commands[] = $cmd;
 
         foreach ($sub_presenters as $item) {
             /*
@@ -275,6 +274,19 @@ class Processing
             return(false);
             }
              */
+            $videoInfo = $this->getVideoInfo($item['video_mp4']);
+            $audioInfo = $this->getAudioInfo($item['video_mp4']);
+
+            if ( empty($videoInfo['streams'][0]['duration']) or empty($videoInfo['streams'][0]['height']) ) {
+                //if ( empty($videoInfo['streams'][0]['duration'] || empty($videoInfo['streams'][0]['height']))) {
+                echo "Error: Video stream do not exists. Something wrong with source file " . $item['video_mp4'] . PHP_EOL;
+                continue;
+            }
+            if (empty($audioInfo['streams'][0]['duration'])) {
+                echo "Error: Audio stream do not exists. Something wrong with source file " . $item['video_mp4'] . PHP_EOL;
+                continue;
+            }
+
             $n = $key;
             $key++;
             $scaleFilter[$key] = "[${key}:v] fps=25, setpts=PTS-STARTPTS, scale=w=$subScaleWidth:h=$subScaleHeight, setsar=1 [video${key}];";
@@ -284,23 +296,22 @@ class Processing
             $audioFilter[] = "[${key}:a] asetpts=PTS-STARTPTS,aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2 [a${key}] ;";
             //$audioFilter[]="[${key}:a] asetpts=PTS-STARTPTS, aresample, dynaudnorm,apad [a${key}] ;";
             $amergeFilter[] = "[a${key}]";
-            $fixedVideoInput[$key]=$this->getTemporaryFile("mp4");            
+            $fixedVideoInput[$key] = $this->getTemporaryFile("mp4");
             $input[$key] = "-i " . $fixedVideoInput[$key];
 
-            $cmd=  join(" ", array(
+            $cmd = join(" ", array(
                 $ffmpeg,
                 "-y", // overwrite output file
                 "-loglevel $ffmpegLogLevel", //  ( default level is info )
-                "-ss $start -t $end -i " . $item['video_mp4'] , // input
-                "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
-                "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", // 
-                "-c:a aac -ac 2 ", // 
-                $fixedVideoInput[$key]
-                ));
-                $commands[]=$cmd;            
+                "-ss $start -t $end -i " . $item['video_mp4'], // input
+                 "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+                "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", //
+                 "-c:a aac -ac 2 ", //
+                $fixedVideoInput[$key],
+            ));
+            $commands[] = $cmd;
         }
 
-        
         $cmd = join(" ", array(
             $ffmpeg,
             "-y", // overwrite output file
@@ -322,7 +333,7 @@ class Processing
             "-c:a aac -ac 2 -bsf:a aac_adtstoasc ",
             "-mpegts_copyts 1 -f mpegts $output", // output in mp4 format
         ));
-        $commands[]=$cmd;     
+        $commands[] = $cmd;
 
         return ($commands);
     }
@@ -352,26 +363,25 @@ class Processing
         $json = shell_exec($cmd);
         $out = json_decode($json, true);
         return ($out);
-    }    
-
+    }
 
     public function normalizeVideo($input, $output, $width = 1280, $height = 720)
     {
         $ffmpeg = $this->ffmpeg;
         $ffmpegLogLevel = $this->ffmpegLogLevel;
 
-        $audioInfo=$this->getAudioInfo($input);
-     
-        $audioFilter="[0:a] aresample=44100:first_pts=0 [a]";
-        if( empty( $audioInfo['streams'][0]['duration'])) { //check if audio stream exists
-            $videoInfo=$this->getVideoInfo($input);    
-            if( !empty( $videoInfo['streams'][0]['duration'])) { //check if video stream exists
-                $duration=$videoInfo['streams'][0]['duration'];
-                $audioFilter="aevalsrc=0|0:s=44100:duration=$duration [a]";
+        $audioInfo = $this->getAudioInfo($input);
+
+        $audioFilter = "[0:a] aresample=44100:first_pts=0 [a]";
+        if (empty($audioInfo['streams'][0]['duration'])) { //check if audio stream exists
+            $videoInfo = $this->getVideoInfo($input);
+            if (!empty($videoInfo['streams'][0]['duration'])) { //check if video stream exists
+                $duration = $videoInfo['streams'][0]['duration'];
+                $audioFilter = "aevalsrc=0|0:s=44100:duration=$duration [a]";
             } else {
                 $this->setLastError("Error: Cannot check duration of this media file");
-                return( false);
-            }                      
+                return (false);
+            }
 
         }
         $cmd = join(" ", array(
@@ -380,18 +390,17 @@ class Processing
             "-loglevel $ffmpegLogLevel", //  ( default level is info )
             "-i $input", // input
              "-filter_complex \" ", // use filters
-             "[0:v] fps=25, scale=w=min(iw*${height}/ih\,${width}):h=min(${height}\,ih*${width}/iw), pad=w=${width}:h=${height}:x=(${width}-iw)/2:y=(${height}-ih)/2 , setsar=1 [v];", 
-             "$audioFilter\"",
-             " -map \"[v]\"",
+            "[0:v] fps=25, scale=w=min(iw*${height}/ih\,${width}):h=min(${height}\,ih*${width}/iw), pad=w=${width}:h=${height}:x=(${width}-iw)/2:y=(${height}-ih)/2 , setsar=1 [v];",
+            "$audioFilter\"",
+            " -map \"[v]\"",
             "-c:v h264 -crf 23 -preset veryfast -bsf:v h264_mp4toannexb -pix_fmt yuv420p", // use output video codec h264 with Constant Rate Factor(crf=20), and veryfast codec settings
              "-map \"[a]\"",
             //"-c:a mp3 -ac 2 -ar 44100 -b:a 128k  ",
-            "-c:a aac -ac 2 -ar 44100 -b:a 128k  -bsf:a aac_adtstoasc  ",
+             "-c:a aac -ac 2 -ar 44100 -b:a 128k  -bsf:a aac_adtstoasc  ",
             "-shortest -g 150 -keyint_min 150 -mpegts_copyts 1 -f mpegts $output", // output in mp4 format
         ));
 
         return ($cmd);
     }
- 
 
 }
