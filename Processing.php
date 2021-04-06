@@ -260,9 +260,9 @@ class Processing
             "-y", // overwrite output file
             "-loglevel $ffmpegLogLevel", //  ( default level is info )
             "-ss $start -t $end -i " . $item['video_mp4'], // input
-             "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+             "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2,apad",
             "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", //
-             "-c:a aac -ac 2 ", //
+             "-c:a aac -ac 2 -shortest", //
             $fixedVideoInput[$key],
         ));
         $commands[] = $cmd;
@@ -304,9 +304,9 @@ class Processing
                 "-y", // overwrite output file
                 "-loglevel $ffmpegLogLevel", //  ( default level is info )
                 "-ss $start -t $end -i " . $item['video_mp4'], // input
-                 "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2",
+                 "-af aresample=async=9600:min_hard_comp=0.04:max_soft_comp=0.24:ocl=2,apad",
                 "-c:v h264 -crf 18 -preset veryfast -pix_fmt yuv420p", //
-                 "-c:a aac -ac 2 ", //
+                 "-c:a aac -ac 2 -shortest", //
                 $fixedVideoInput[$key],
             ));
             $commands[] = $cmd;
